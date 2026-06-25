@@ -325,11 +325,18 @@
         var numericColumns = [];
         var totalMissing = 0;
 
+        rows.forEach(function(row) {
+          columns.forEach(function(column) {
+            if (isMissingValue(row[column])) {
+              totalMissing += 1;
+            }
+          });
+        });
+
         columns.forEach(function(column) {
           var values = rows.map(function(row) { return row[column]; });
           var numericValues = values.map(toNumber).filter(isValidNumber);
-          var missingCount = values.length - numericValues.length;
-          totalMissing += missingCount;
+          var missingCount = values.filter(isMissingValue).length;
           if (numericValues.length > 0) {
             numericColumns.push({
               name: column,
@@ -515,6 +522,10 @@
         }
         var normalized = text.replace(/,/g, "");
         return Number(normalized);
+      }
+
+      function isMissingValue(value) {
+        return value === null || value === undefined || String(value).trim() === "";
       }
 
       function isValidNumber(value) {
