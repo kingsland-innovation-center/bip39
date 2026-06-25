@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dataset Statistical Analysis</title>
+  <link rel="stylesheet" href="css/bootstrap-3.3.7.css">
+  <style>
+    body {
+      background: #f7f8fa;
+      color: #1f2937;
+      padding: 24px 0 40px;
+    }
+    .page-title {
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    .subtitle {
+      margin-bottom: 24px;
+      color: #4b5563;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    .stat-card {
+      background: #f8fafc;
+      border: 1px solid #dbe3ec;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .histogram {
+      display: flex;
+      gap: 4px;
+      align-items: flex-end;
+      height: 160px;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+    .histogram-bar {
+      flex: 1;
+      min-width: 8px;
+      background: linear-gradient(180deg, #60a5fa, #2563eb);
+      border-radius: 3px 3px 0 0;
+    }
+    .histogram-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .numeric-column-title {
+      margin-top: 8px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .help-text {
+      color: #6b7280;
+      margin-top: 8px;
+      margin-bottom: 0;
+      font-size: 12px;
+    }
+    .table-responsive {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .error-box {
+      margin-top: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="page-title">Statistical Analysis</h1>
+    <p class="subtitle">Upload or paste your attached dataset (CSV or JSON) to generate descriptive statistics and histograms.</p>
+
+    <div class="card">
+      <div class="row">
+        <div class="col-sm-6">
+          <label for="data-file">Dataset File</label>
+          <input id="data-file" type="file" class="form-control" accept=".csv,.json,text/csv,application/json">
+          <p class="help-text">CSV should include headers in the first row. JSON should be an array of objects.</p>
+        </div>
+        <div class="col-sm-6">
+          <label for="data-format">Data Format</label>
+          <select id="data-format" class="form-control">
+            <option value="auto">Auto-detect</option>
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
+          <button id="analyze-button" class="btn btn-primary" style="margin-top: 16px;">Analyze Data</button>
+        </div>
+      </div>
+      <label for="data-text" style="margin-top: 16px;">Or Paste Data</label>
+      <textarea id="data-text" class="form-control" rows="7" placeholder="Paste CSV or JSON here..."></textarea>
+      <div id="error-box" class="alert alert-danger error-box"></div>
+    </div>
+
+    <div id="overview-card" class="card" style="display: none;">
+      <h3 style="margin-top: 0;">Dataset Overview</h3>
+      <div class="row">
+        <div class="col-sm-3">
+          <div class="stat-card">
+            <div class="stat-label">Rows</div>
+            <div id="rows-count" class="stat-value">0</div>
+          </div>
+        </div>
+        <div class="col-sm-3">
+          <div class="stat-card">
+            <div class="stat-label">Columns</div>
+            <div id="columns-count" class="stat-value">0</div>
+          </div>
+        </div>
+        <div class="col-sm-3">
+          <div class="stat-card">
+            <div class="stat-label">Numeric Columns</div>
+            <div id="numeric-columns-count" class="stat-value">0</div>
+          </div>
+        </div>
+        <div class="col-sm-3">
+          <div class="stat-card">
+            <div class="stat-label">Missing Values</div>
+            <div id="missing-values-count" class="stat-value">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="stats-card" class="card" style="display: none;">
+      <h3 style="margin-top: 0;">Descriptive Statistics</h3>
+      <div class="table-responsive">
+        <table id="stats-table" class="table table-striped table-condensed" style="margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Count</th>
+              <th>Missing</th>
+              <th>Mean</th>
+              <th>Median</th>
+              <th>Std Dev</th>
+              <th>Min</th>
+              <th>Q1</th>
+              <th>Q3</th>
+              <th>Max</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="histograms-card" class="card" style="display: none;">
+      <h3 style="margin-top: 0;">Histograms</h3>
+      <div id="histograms-list"></div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var fileInput = document.getElementById("data-file");
+      var formatSelect = document.getElementById("data-format");
+      var textArea = document.getElementById("data-text");
+      var analyzeButton = document.getElementById("analyze-button");
+      var errorBox = document.getElementById("error-box");
+      var overviewCard = document.getElementById("overview-card");
+      var statsCard = document.getElementById("stats-card");
+      var histogramsCard = document.getElementById("histograms-card");
+      var statsBody = document.querySelector("#stats-table tbody");
+      var histogramsList = document.getElementById("histograms-list");
+
+      analyzeButton.addEventListener("click", function() {
+        var textData = textArea.value.trim();
+        if (textData.length > 0) {
+          analyzeRawData(textData);
+          return;
+        }
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+          showError("Upload a CSV/JSON file or paste dataset content.");
+          return;
+        }
+
+        var file = fileInput.files[0];
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          analyzeRawData(String(event.target.result || ""));
+        };
+        reader.onerror = function() {
+          showError("Unable to read the uploaded file.");
+        };
+        reader.readAsText(file);
+      });
+
+      function analyzeRawData(rawText) {
+        try {
+          hideError();
+          var format = resolveFormat(rawText);
+          var rows = format === "json" ? parseJsonRows(rawText) : parseCsvRows(rawText);
+          if (!rows.length) {
+            showError("No rows were found in the dataset.");
+            return;
+          }
+          renderAnalysis(rows);
+        } catch (error) {
+          showError(error && error.message ? error.message : "Failed to parse dataset.");
+        }
+      }
+
+      function resolveFormat(rawText) {
+        var selected = formatSelect.value;
+        if (selected !== "auto") {
+          return selected;
+        }
+        var trimmed = rawText.trim();
+        if (trimmed[0] === "[" || trimmed[0] === "{") {
+          return "json";
+        }
+        return "csv";
+      }
+
+      function parseJsonRows(rawText) {
+        var parsed = JSON.parse(rawText);
+        if (!Array.isArray(parsed)) {
+          throw new Error("JSON must be an array of objects.");
+        }
+        if (!parsed.length) {
+          return [];
+        }
+        if (typeof parsed[0] !== "object" || parsed[0] === null || Array.isArray(parsed[0])) {
+          throw new Error("JSON rows must be plain objects.");
+        }
+        var keys = Object.keys(parsed[0]);
+        return parsed.map(function(item) {
+          var out = {};
+          keys.forEach(function(key) {
+            out[key] = item[key];
+          });
+          return out;
+        });
+      }
+
+      function parseCsvRows(rawText) {
+        var rows = parseCsvMatrix(rawText);
+        if (rows.length < 2) {
+          throw new Error("CSV needs at least a header row and one data row.");
+        }
+        var headers = rows[0].map(function(cell, index) {
+          var trimmed = String(cell || "").trim();
+          return trimmed || "column_" + (index + 1);
+        });
+        return rows.slice(1).filter(function(line) {
+          return line.some(function(cell) {
+            return String(cell || "").trim().length > 0;
+          });
+        }).map(function(line) {
+          var item = {};
+          headers.forEach(function(header, index) {
+            item[header] = line[index] !== undefined ? line[index] : "";
+          });
+          return item;
+        });
+      }
+
+      function parseCsvMatrix(rawText) {
+        var text = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        var rows = [];
+        var row = [];
+        var value = "";
+        var inQuotes = false;
+
+        for (var i = 0; i < text.length; i++) {
+          var char = text[i];
+          var next = text[i + 1];
+
+          if (char === "\"" && inQuotes && next === "\"") {
+            value += "\"";
+            i++;
+            continue;
+          }
+          if (char === "\"") {
+            inQuotes = !inQuotes;
+            continue;
+          }
+          if (char === "," && !inQuotes) {
+            row.push(value);
+            value = "";
+            continue;
+          }
+          if (char === "\n" && !inQuotes) {
+            row.push(value);
+            rows.push(row);
+            row = [];
+            value = "";
+            continue;
+          }
+          value += char;
+        }
+
+        row.push(value);
+        rows.push(row);
+        return rows;
+      }
+
+      function renderAnalysis(rows) {
+        var columns = Object.keys(rows[0]);
+        var numericColumns = [];
+        var totalMissing = 0;
+
+        columns.forEach(function(column) {
+          var values = rows.map(function(row) { return row[column]; });
+          var numericValues = values.map(toNumber).filter(isValidNumber);
+          var missingCount = values.length - numericValues.length;
+          totalMissing += missingCount;
+          if (numericValues.length > 0) {
+            numericColumns.push({
+              name: column,
+              values: numericValues,
+              totalRows: values.length,
+              missingCount: missingCount
+            });
+          }
+        });
+
+        document.getElementById("rows-count").textContent = String(rows.length);
+        document.getElementById("columns-count").textContent = String(columns.length);
+        document.getElementById("numeric-columns-count").textContent = String(numericColumns.length);
+        document.getElementById("missing-values-count").textContent = String(totalMissing);
+        overviewCard.style.display = "block";
+
+        renderStatsTable(numericColumns);
+        renderHistograms(numericColumns);
+      }
+
+      function renderStatsTable(numericColumns) {
+        statsBody.innerHTML = "";
+
+        if (!numericColumns.length) {
+          statsBody.innerHTML = "<tr><td colspan='10'>No numeric columns found.</td></tr>";
+          statsCard.style.display = "block";
+          return;
+        }
+
+        numericColumns.forEach(function(column) {
+          var sorted = column.values.slice().sort(function(a, b) { return a - b; });
+          var mean = getMean(sorted);
+          var median = getPercentile(sorted, 0.5);
+          var stdDev = getStdDev(sorted, mean);
+          var q1 = getPercentile(sorted, 0.25);
+          var q3 = getPercentile(sorted, 0.75);
+          var min = sorted[0];
+          var max = sorted[sorted.length - 1];
+
+          var tr = document.createElement("tr");
+          tr.innerHTML =
+            "<td>" + escapeHtml(column.name) + "</td>" +
+            "<td>" + sorted.length + "</td>" +
+            "<td>" + column.missingCount + "</td>" +
+            "<td>" + formatNumber(mean) + "</td>" +
+            "<td>" + formatNumber(median) + "</td>" +
+            "<td>" + formatNumber(stdDev) + "</td>" +
+            "<td>" + formatNumber(min) + "</td>" +
+            "<td>" + formatNumber(q1) + "</td>" +
+            "<td>" + formatNumber(q3) + "</td>" +
+            "<td>" + formatNumber(max) + "</td>";
+          statsBody.appendChild(tr);
+        });
+
+        statsCard.style.display = "block";
+      }
+
+      function renderHistograms(numericColumns) {
+        histogramsList.innerHTML = "";
+        if (!numericColumns.length) {
+          histogramsList.innerHTML = "<p>No numeric columns available for histogram rendering.</p>";
+          histogramsCard.style.display = "block";
+          return;
+        }
+
+        numericColumns.forEach(function(column) {
+          var section = document.createElement("div");
+          section.style.marginBottom = "18px";
+
+          var title = document.createElement("div");
+          title.className = "numeric-column-title";
+          title.textContent = column.name;
+
+          var histogram = document.createElement("div");
+          histogram.className = "histogram";
+
+          var labels = document.createElement("div");
+          labels.className = "histogram-labels";
+
+          var bins = buildHistogramBins(column.values, 10);
+          var maxCount = bins.reduce(function(max, bin) { return Math.max(max, bin.count); }, 0) || 1;
+
+          bins.forEach(function(bin) {
+            var bar = document.createElement("div");
+            bar.className = "histogram-bar";
+            bar.style.height = Math.max(4, Math.round((bin.count / maxCount) * 150)) + "px";
+            bar.title = "[" + formatNumber(bin.start) + ", " + formatNumber(bin.end) + "]: " + bin.count;
+            histogram.appendChild(bar);
+          });
+
+          var minLabel = document.createElement("span");
+          minLabel.textContent = "min " + formatNumber(bins[0].start);
+          var maxLabel = document.createElement("span");
+          maxLabel.textContent = "max " + formatNumber(bins[bins.length - 1].end);
+          labels.appendChild(minLabel);
+          labels.appendChild(maxLabel);
+
+          section.appendChild(title);
+          section.appendChild(histogram);
+          section.appendChild(labels);
+          histogramsList.appendChild(section);
+        });
+
+        histogramsCard.style.display = "block";
+      }
+
+      function buildHistogramBins(values, binCount) {
+        var min = Math.min.apply(null, values);
+        var max = Math.max.apply(null, values);
+
+        if (min === max) {
+          return [{
+            start: min,
+            end: max,
+            count: values.length
+          }];
+        }
+
+        var step = (max - min) / binCount;
+        var bins = [];
+        for (var i = 0; i < binCount; i++) {
+          bins.push({
+            start: min + (step * i),
+            end: i === binCount - 1 ? max : min + (step * (i + 1)),
+            count: 0
+          });
+        }
+
+        values.forEach(function(value) {
+          var index = Math.floor((value - min) / step);
+          if (index >= binCount) {
+            index = binCount - 1;
+          }
+          bins[index].count += 1;
+        });
+
+        return bins;
+      }
+
+      function getMean(values) {
+        var sum = values.reduce(function(total, value) { return total + value; }, 0);
+        return sum / values.length;
+      }
+
+      function getStdDev(values, mean) {
+        if (values.length <= 1) {
+          return 0;
+        }
+        var variance = values.reduce(function(total, value) {
+          var diff = value - mean;
+          return total + (diff * diff);
+        }, 0) / (values.length - 1);
+        return Math.sqrt(variance);
+      }
+
+      function getPercentile(sortedValues, percentile) {
+        if (!sortedValues.length) {
+          return NaN;
+        }
+        if (sortedValues.length === 1) {
+          return sortedValues[0];
+        }
+        var index = (sortedValues.length - 1) * percentile;
+        var lower = Math.floor(index);
+        var upper = Math.ceil(index);
+        var weight = index - lower;
+        if (lower === upper) {
+          return sortedValues[lower];
+        }
+        return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+      }
+
+      function toNumber(value) {
+        if (value === null || value === undefined) {
+          return NaN;
+        }
+        if (typeof value === "number") {
+          return value;
+        }
+        var text = String(value).trim();
+        if (text === "") {
+          return NaN;
+        }
+        var normalized = text.replace(/,/g, "");
+        return Number(normalized);
+      }
+
+      function isValidNumber(value) {
+        return Number.isFinite(value);
+      }
+
+      function formatNumber(value) {
+        if (!Number.isFinite(value)) {
+          return "-";
+        }
+        if (Math.abs(value) >= 1000) {
+          return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
+        if (Math.abs(value) >= 1) {
+          return value.toFixed(3);
+        }
+        return value.toPrecision(3);
+      }
+
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.style.display = "block";
+      }
+
+      function hideError() {
+        errorBox.style.display = "none";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+    })();
+  </script>
+</body>
+</html>
