@@ -53,6 +53,13 @@ def parse_args() -> argparse.Namespace:
         "--today",
         help="Optional report reference date (YYYY-MM-DD) for deterministic runs.",
     )
+    parser.add_argument(
+        "--previous-snapshot",
+        help=(
+            "Optional previous tickets_snapshot.json to calculate movement "
+            "(status transitions and count deltas)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -133,6 +140,15 @@ def read_tickets(csv_path: Path) -> list[Ticket]:
     return tickets
 
 
+def read_previous_snapshot(snapshot_path: Path | None) -> dict[str, object] | None:
+    if snapshot_path is None:
+        return None
+    payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Previous snapshot must be a JSON object.")
+    return payload
+
+
 def age_days(ticket: Ticket, reference_date: date) -> int | None:
     if not ticket.create_date:
         return None
@@ -193,11 +209,53 @@ def ticket_to_row(ticket: Ticket, reference_date: date) -> dict[str, str]:
     }
 
 
+def ticket_to_dashboard_record(ticket: Ticket, reference_date: date) -> dict[str, str | int | bool | None]:
+    age = age_days(ticket, reference_date)
+    return {
+        "ticket_id": ticket.ticket_id,
+        "ticket_name": ticket.ticket_name,
+        "status": ticket.status,
+        "owner": ticket.owner,
+        "is_resolved": is_resolved_status(ticket.status),
+        "age_days": age,
+        "create_date": format_date(ticket.create_date),
+        "last_modified_date": format_date(ticket.last_modified_date),
+        "due_date": format_date(ticket.due_date),
+        "fedex_to_harvey_tracking": ticket.fedex_to_harvey_tracking,
+        "tracking_number_to_irs": ticket.tracking_number_to_irs,
+        "date_sent_to_irs": format_date(ticket.date_sent_to_irs),
+    }
+
+
+def ticket_to_snapshot_record(ticket: Ticket) -> dict[str, str]:
+    return {
+        "ticket_id": ticket.ticket_id,
+        "status": ticket.status,
+        "owner": ticket.owner,
+        "create_date": format_date(ticket.create_date),
+        "last_modified_date": format_date(ticket.last_modified_date),
+    }
+
+
 def sort_for_action_list(tickets: Iterable[Ticket], reference_date: date) -> list[Ticket]:
     return sorted(
         tickets,
         key=lambda ticket: (
             -(age_days(ticket, reference_date) or -1),
+            ticket.owner.lower(),
+            ticket.ticket_name.lower(),
+            ticket.ticket_id,
+        ),
+    )
+
+
+def sort_for_dashboard(tickets: Iterable[Ticket], reference_date: date) -> list[Ticket]:
+    return sorted(
+        tickets,
+        key=lambda ticket: (
+            is_resolved_status(ticket.status),
+            -(age_days(ticket, reference_date) or -1),
+            ticket.status.lower(),
             ticket.owner.lower(),
             ticket.ticket_name.lower(),
             ticket.ticket_id,
@@ -238,7 +296,79 @@ def write_csv_report(tickets: Sequence[Ticket], destination: Path, reference_dat
             writer.writerow(ticket_to_row(ticket, reference_date))
 
 
-def build_report(tickets: Sequence[Ticket], reference_date: date, stale_days: int) -> dict[str, object]:
+def calculate_status_movement(
+    current_tickets: Sequence[Ticket], previous_snapshot: dict[str, object] | None
+) -> dict[str, object]:
+    if previous_snapshot is None:
+        return {
+            "compared_to_previous_snapshot": False,
+            "message": "No previous snapshot supplied.",
+            "previous_snapshot_generated_at_utc": None,
+            "new_tickets_count": 0,
+            "removed_tickets_count": 0,
+            "status_transitions": [],
+            "status_count_delta": [],
+        }
+
+    previous_tickets_raw = previous_snapshot.get("tickets", [])
+    previous_ticket_rows = (
+        previous_tickets_raw
+        if isinstance(previous_tickets_raw, list)
+        else []
+    )
+    previous_map = {
+        str(row.get("ticket_id", "")).strip(): normalize_status(str(row.get("status", "")))
+        for row in previous_ticket_rows
+        if isinstance(row, dict) and str(row.get("ticket_id", "")).strip()
+    }
+    current_map = {ticket.ticket_id: ticket.status for ticket in current_tickets}
+
+    transitions = Counter()
+    for ticket_id, current_status in current_map.items():
+        previous_status = previous_map.get(ticket_id)
+        if previous_status and previous_status != current_status:
+            transitions[(previous_status, current_status)] += 1
+
+    new_tickets_count = len([ticket_id for ticket_id in current_map if ticket_id not in previous_map])
+    removed_tickets_count = len([ticket_id for ticket_id in previous_map if ticket_id not in current_map])
+
+    previous_counts = Counter(previous_map.values())
+    current_counts = Counter(current_map.values())
+    all_statuses = sorted(set(previous_counts.keys()) | set(current_counts.keys()), key=str.lower)
+    status_count_delta = [
+        {
+            "status": status,
+            "previous_count": previous_counts.get(status, 0),
+            "current_count": current_counts.get(status, 0),
+            "delta": current_counts.get(status, 0) - previous_counts.get(status, 0),
+        }
+        for status in all_statuses
+    ]
+    status_count_delta.sort(key=lambda row: (-abs(row["delta"]), row["status"].lower()))
+
+    transition_rows = [
+        {"from_status": from_status, "to_status": to_status, "count": count}
+        for (from_status, to_status), count in transitions.items()
+    ]
+    transition_rows.sort(key=lambda row: (-row["count"], row["from_status"].lower(), row["to_status"].lower()))
+
+    return {
+        "compared_to_previous_snapshot": True,
+        "message": "Movement calculated against previous snapshot.",
+        "previous_snapshot_generated_at_utc": previous_snapshot.get("generated_at_utc"),
+        "new_tickets_count": new_tickets_count,
+        "removed_tickets_count": removed_tickets_count,
+        "status_transitions": transition_rows,
+        "status_count_delta": status_count_delta,
+    }
+
+
+def build_report(
+    tickets: Sequence[Ticket],
+    reference_date: date,
+    stale_days: int,
+    previous_snapshot: dict[str, object] | None,
+) -> dict[str, object]:
     open_tickets = [ticket for ticket in tickets if not is_resolved_status(ticket.status)]
     resolved_tickets = [ticket for ticket in tickets if is_resolved_status(ticket.status)]
 
@@ -310,10 +440,18 @@ def build_report(tickets: Sequence[Ticket], reference_date: date, stale_days: in
             "overdue_due_date": overdue_due_date,
             "has_irs_tracking_no_sent_date": has_irs_tracking_no_sent_date,
         },
+        "dashboard_tickets": sort_for_dashboard(tickets, reference_date),
+        "movement": calculate_status_movement(tickets, previous_snapshot),
     }
 
 
-def render_markdown(report_data: dict[str, object], source_csv: Path, stale_days: int, generated_at: datetime, reference_date: date) -> str:
+def render_markdown(
+    report_data: dict[str, object],
+    source_csv: Path,
+    stale_days: int,
+    generated_at: datetime,
+    reference_date: date,
+) -> str:
     metrics = report_data["metrics"]
     status_rows = [
         {"label": row["status"], "count": str(row["count"])}
@@ -405,15 +543,26 @@ def main() -> None:
     source_csv = Path(args.input).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    previous_snapshot_path = (
+        Path(args.previous_snapshot).expanduser().resolve()
+        if args.previous_snapshot
+        else None
+    )
 
     if args.today:
         reference_date = datetime.strptime(args.today, "%Y-%m-%d").date()
     else:
         reference_date = datetime.now(timezone.utc).date()
 
+    previous_snapshot = read_previous_snapshot(previous_snapshot_path)
     generated_at = datetime.now(timezone.utc)
     tickets = read_tickets(source_csv)
-    report_data = build_report(tickets, reference_date=reference_date, stale_days=args.stale_days)
+    report_data = build_report(
+        tickets,
+        reference_date=reference_date,
+        stale_days=args.stale_days,
+        previous_snapshot=previous_snapshot,
+    )
     markdown = render_markdown(
         report_data,
         source_csv=source_csv,
@@ -424,6 +573,8 @@ def main() -> None:
 
     markdown_path = output_dir / "tracking_report.md"
     json_path = output_dir / "tracking_report.json"
+    snapshot_path = output_dir / "tickets_snapshot.json"
+    landing_page_data_path = output_dir / "landing_page_data.json"
     missing_fedex_path = output_dir / "open_missing_fedex_tracking.csv"
     missing_irs_path = output_dir / "open_missing_irs_tracking.csv"
     stale_path = output_dir / "open_stale_tickets.csv"
@@ -432,6 +583,8 @@ def main() -> None:
     markdown_path.write_text(markdown, encoding="utf-8")
 
     action_lists = report_data["action_lists"]
+    movement = report_data["movement"]
+    dashboard_tickets = report_data["dashboard_tickets"]
     report_json = {
         "generated_at_utc": generated_at.isoformat(timespec="seconds"),
         "reference_date": reference_date.isoformat(),
@@ -441,6 +594,7 @@ def main() -> None:
         "status_breakdown": report_data["status_breakdown"],
         "owner_breakdown_open": report_data["owner_breakdown_open"],
         "open_age_buckets": report_data["open_age_buckets"],
+        "movement": movement,
         "action_list_counts": {
             "missing_fedex": len(action_lists["missing_fedex"]),
             "missing_irs_tracking": len(action_lists["missing_irs_tracking"]),
@@ -457,6 +611,28 @@ def main() -> None:
     }
     json_path.write_text(json.dumps(report_json, indent=2), encoding="utf-8")
 
+    snapshot_json = {
+        "generated_at_utc": generated_at.isoformat(timespec="seconds"),
+        "source_csv": str(source_csv),
+        "tickets": [ticket_to_snapshot_record(ticket) for ticket in dashboard_tickets],
+    }
+    snapshot_path.write_text(json.dumps(snapshot_json, indent=2), encoding="utf-8")
+
+    landing_data_json = {
+        "generated_at_utc": generated_at.isoformat(timespec="seconds"),
+        "reference_date": reference_date.isoformat(),
+        "source_csv": str(source_csv),
+        "stale_days_threshold": args.stale_days,
+        "metrics": report_data["metrics"],
+        "status_breakdown": report_data["status_breakdown"],
+        "owner_breakdown_open": report_data["owner_breakdown_open"],
+        "open_age_buckets": report_data["open_age_buckets"],
+        "movement": movement,
+        "action_list_counts": report_json["action_list_counts"],
+        "tickets": [ticket_to_dashboard_record(ticket, reference_date) for ticket in dashboard_tickets],
+    }
+    landing_page_data_path.write_text(json.dumps(landing_data_json, indent=2), encoding="utf-8")
+
     write_csv_report(action_lists["missing_fedex"], missing_fedex_path, reference_date)
     write_csv_report(action_lists["missing_irs_tracking"], missing_irs_path, reference_date)
     write_csv_report(action_lists["stale_open_tickets"], stale_path, reference_date)
@@ -464,6 +640,8 @@ def main() -> None:
 
     print(f"Wrote markdown report: {markdown_path}")
     print(f"Wrote JSON report: {json_path}")
+    print(f"Wrote JSON report: {snapshot_path}")
+    print(f"Wrote JSON report: {landing_page_data_path}")
     print(f"Wrote action CSV: {missing_fedex_path}")
     print(f"Wrote action CSV: {missing_irs_path}")
     print(f"Wrote action CSV: {stale_path}")

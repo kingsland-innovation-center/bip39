@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IRS Issue Notice Tracking Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <h1>IRS Issue Notice Tracking Dashboard</h1>
+        <p>
+          Filter tickets, inspect status counts, and track status movement between snapshots.
+        </p>
+        <p id="dataMeta" class="meta">Loading dashboard data...</p>
+      </header>
+
+      <section class="card">
+        <h2>Data Source</h2>
+        <p>
+          Default file: <code>./data/landing_page_data.json</code>
+        </p>
+        <label for="jsonUpload" class="file-label">Load a local landing_page_data.json</label>
+        <input id="jsonUpload" type="file" accept=".json,application/json" />
+        <p id="loadState" class="meta"></p>
+      </section>
+
+      <section class="card">
+        <h2>Filters</h2>
+        <div class="filters">
+          <label>
+            Ticket Status
+            <select id="statusFilter">
+              <option value="__all__">All statuses</option>
+            </select>
+          </label>
+          <label>
+            Owner
+            <select id="ownerFilter">
+              <option value="__all__">All owners</option>
+            </select>
+          </label>
+          <label>
+            Ticket Type
+            <select id="resolvedFilter">
+              <option value="all">All tickets</option>
+              <option value="open">Open only</option>
+              <option value="resolved">Resolved only</option>
+            </select>
+          </label>
+          <label>
+            Search
+            <input
+              id="searchFilter"
+              type="text"
+              placeholder="Ticket ID, name, owner, status"
+            />
+          </label>
+        </div>
+        <button id="clearFilters" type="button">Clear filters</button>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Filtered Ticket Summary</h2>
+          <div class="metrics" id="filteredMetrics"></div>
+        </article>
+        <article class="card">
+          <h2>Overall Ticket Summary</h2>
+          <div class="metrics" id="overallMetrics"></div>
+        </article>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Status Counts (Filtered)</h2>
+          <table id="statusCountsTable">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h2>Status Movement</h2>
+          <p id="movementMeta" class="meta"></p>
+          <table id="movementTable">
+            <thead>
+              <tr>
+                <th>From Status</th>
+                <th>To Status</th>
+                <th>Tickets Moved</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <h3>Status Count Delta</h3>
+          <table id="movementDeltaTable">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Previous</th>
+                <th>Current</th>
+                <th>Delta</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Ticket List (<span id="ticketCountLabel">0</span>)</h2>
+        <p class="meta">
+          Showing the first 300 tickets after filtering, sorted by open first then age.
+        </p>
+        <table id="ticketTable">
+          <thead>
+            <tr>
+              <th>Ticket ID</th>
+              <th>Ticket Name</th>
+              <th>Status</th>
+              <th>Owner</th>
+              <th>Age (days)</th>
+              <th>Resolved</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
