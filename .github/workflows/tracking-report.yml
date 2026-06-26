@@ -1,0 +1,61 @@
+name: Tracking Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: "Path to HubSpot CSV file in the repository"
+        required: false
+        default: "data/hubspot-irs-issue-notices.csv"
+      stale_days:
+        description: "Stale threshold for open tickets"
+        required: false
+        default: "7"
+  schedule:
+    - cron: "0 13 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  generate-tracking-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "csv_path=${{ inputs.csv_path }}" >> "$GITHUB_OUTPUT"
+            echo "stale_days=${{ inputs.stale_days }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "csv_path=data/hubspot-irs-issue-notices.csv" >> "$GITHUB_OUTPUT"
+            echo "stale_days=7" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate CSV path exists
+        run: |
+          if [ ! -f "${{ steps.inputs.outputs.csv_path }}" ]; then
+            echo "CSV file not found: ${{ steps.inputs.outputs.csv_path }}"
+            exit 1
+          fi
+
+      - name: Generate tracking report
+        run: |
+          python3 tracking-report/generate_tracking_report.py \
+            --input "${{ steps.inputs.outputs.csv_path }}" \
+            --output-dir tracking-report/output \
+            --stale-days "${{ steps.inputs.outputs.stale_days }}"
+
+      - name: Upload report artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracking-report
+          path: tracking-report/output
