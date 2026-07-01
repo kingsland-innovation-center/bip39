@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IRS Issue Notices Dashboard</title>
+    <link rel="stylesheet" href="css/irs-issue-notices.css">
+</head>
+<body>
+    <header class="page-header">
+        <h1>IRS Issue Notices Dashboard</h1>
+        <p>Upload the HubSpot CSV export to explore status, owners, and ticket timelines.</p>
+    </header>
+
+    <main class="page-content">
+        <section class="panel upload-panel">
+            <label for="csvFile">HubSpot export (.csv)</label>
+            <input id="csvFile" type="file" accept=".csv,text/csv">
+            <p class="hint">
+                Use the attached file:
+                <code>hubspot-crm-exports-irs-issue-notices-organized-2026-06-19_2221.csv</code>
+            </p>
+            <p id="loadStatus" class="load-status">No file loaded.</p>
+        </section>
+
+        <section class="cards" aria-label="Summary cards">
+            <article class="panel card">
+                <h2>Total Tickets</h2>
+                <p id="totalTickets" class="metric">0</p>
+            </article>
+            <article class="panel card">
+                <h2>New</h2>
+                <p id="newTickets" class="metric">0</p>
+            </article>
+            <article class="panel card">
+                <h2>In Progress</h2>
+                <p id="inProgressTickets" class="metric">0</p>
+            </article>
+            <article class="panel card">
+                <h2>Resolved</h2>
+                <p id="resolvedTickets" class="metric">0</p>
+            </article>
+        </section>
+
+        <section class="panel filters-panel" aria-label="Filters">
+            <div class="filter-field">
+                <label for="searchInput">Search</label>
+                <input id="searchInput" type="text" placeholder="Ticket, deal, ID...">
+            </div>
+            <div class="filter-field">
+                <label for="ownerFilter">Owner</label>
+                <select id="ownerFilter">
+                    <option value="">All owners</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter">
+                    <option value="">All statuses</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="quarterFilter">Related Quarter</label>
+                <select id="quarterFilter">
+                    <option value="">All quarters</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="sortBy">Sort by</label>
+                <select id="sortBy">
+                    <option value="create">Create date</option>
+                    <option value="modified">Last modified date</option>
+                    <option value="due">Due date</option>
+                    <option value="ticketName">Ticket name</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="sortDirection">Direction</label>
+                <select id="sortDirection">
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="panel owners-panel" aria-label="Owner summary">
+            <h2>Top Owners (filtered)</h2>
+            <div id="ownerSummary" class="owner-summary"></div>
+        </section>
+
+        <section class="panel table-panel" aria-label="Ticket table">
+            <div class="table-controls">
+                <p id="resultsSummary" class="results-summary">0 results</p>
+                <div class="pagination-controls">
+                    <button id="prevPage" type="button">Previous</button>
+                    <span id="pageInfo">Page 1 of 1</span>
+                    <button id="nextPage" type="button">Next</button>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticket ID</th>
+                            <th>Ticket Name</th>
+                            <th>Status</th>
+                            <th>Owner</th>
+                            <th>Quarter</th>
+                            <th>Date of Notification</th>
+                            <th>Due Date</th>
+                            <th>Create Date</th>
+                            <th>Last Modified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr>
+                            <td colspan="9" class="empty-table">Upload a CSV file to populate this table.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/irs-issue-notices.js"></script>
+</body>
+</html>
