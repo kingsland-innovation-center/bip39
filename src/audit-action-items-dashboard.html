@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit Action Items Dashboard</title>
+  <link rel="stylesheet" href="css/bootstrap-3.3.7.css">
+  <style>
+    body {
+      background: #f4f6f9;
+      color: #1f2937;
+      padding: 24px 0 48px;
+    }
+    .page-title {
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .subtitle {
+      margin-bottom: 24px;
+      color: #4b5563;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    .stat-card {
+      background: #f8fafc;
+      border: 1px solid #dbe3ec;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      height: 100%;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 6px;
+      line-height: 1.1;
+    }
+    .stat-detail {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+    .status-open { border-left: 4px solid #3b82f6; }
+    .status-in_progress { border-left: 4px solid #f59e0b; }
+    .status-awaiting_irs_response { border-left: 4px solid #8b5cf6; }
+    .status-completed { border-left: 4px solid #10b981; }
+    .status-other { border-left: 4px solid #94a3b8; }
+    .filter-label {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .help-text {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 8px;
+      margin-bottom: 0;
+    }
+    .table-responsive {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .count-table th.sortable {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .count-table th.sortable:hover {
+      background: #eef2f7;
+    }
+    .sort-indicator {
+      color: #94a3b8;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+    .sort-indicator.active {
+      color: #2563eb;
+    }
+    .bar-cell {
+      min-width: 140px;
+    }
+    .count-bar {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .count-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #60a5fa, #2563eb);
+      border-radius: 4px;
+    }
+    .section-title {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .error-box {
+      margin-top: 12px;
+      display: none;
+    }
+    .filter-actions {
+      margin-top: 16px;
+    }
+    .badge-pct {
+      background: #eef2ff;
+      color: #4338ca;
+      font-weight: 600;
+    }
+    .loading-overlay {
+      display: none;
+      color: #6b7280;
+      padding: 24px;
+      text-align: center;
+    }
+    .dashboard-content {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="page-title">Audit Action Items Dashboard</h1>
+    <p class="subtitle">Category, team, and status counts for audit action items. Use filters to narrow the dataset; click column headers to sort.</p>
+
+    <div class="card">
+      <div class="row">
+        <div class="col-sm-6">
+          <label for="data-file">Dataset File</label>
+          <input id="data-file" type="file" class="form-control" accept=".csv,text/csv">
+          <p class="help-text">Defaults to <code>data/audit-action-items-2026-07-01.csv</code> when served locally.</p>
+        </div>
+        <div class="col-sm-6">
+          <label for="data-text">Or Paste CSV</label>
+          <textarea id="data-text" class="form-control" rows="4" placeholder="Paste CSV content here..."></textarea>
+          <button id="load-button" class="btn btn-primary filter-actions">Load Data</button>
+        </div>
+      </div>
+      <div id="error-box" class="alert alert-danger error-box"></div>
+      <div id="loading-overlay" class="loading-overlay">Loading dataset...</div>
+    </div>
+
+    <div id="dashboard-content" class="dashboard-content">
+      <div class="card">
+        <h3 class="section-title">Filters</h3>
+        <div class="row">
+          <div class="col-sm-4">
+            <div class="filter-label">Status</div>
+            <select id="filter-status" class="form-control" multiple size="5"></select>
+            <p class="help-text">Hold Ctrl/Cmd to select multiple. Leave empty for all.</p>
+          </div>
+          <div class="col-sm-4">
+            <div class="filter-label">Team</div>
+            <select id="filter-team" class="form-control" multiple size="5"></select>
+          </div>
+          <div class="col-sm-4">
+            <div class="filter-label">Category</div>
+            <select id="filter-category" class="form-control" multiple size="5"></select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button id="clear-filters" class="btn btn-default">Clear Filters</button>
+          <span id="filtered-count-label" class="help-text" style="margin-left: 12px;"></span>
+        </div>
+      </div>
+
+      <div class="row" id="summary-cards"></div>
+
+      <div class="row">
+        <div class="col-md-4">
+          <div class="card">
+            <h3 class="section-title">Status Breakdown</h3>
+            <div class="table-responsive">
+              <table id="status-table" class="table table-striped table-condensed count-table" style="margin-bottom: 0;">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-table="status" data-key="name">Status <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="status" data-key="count">Count <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="status" data-key="pct">% <span class="sort-indicator"></span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h3 class="section-title">Team Breakdown</h3>
+            <div class="table-responsive">
+              <table id="team-table" class="table table-striped table-condensed count-table" style="margin-bottom: 0;">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-table="team" data-key="name">Team <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="team" data-key="count">Count <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="team" data-key="pct">% <span class="sort-indicator"></span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h3 class="section-title">Category Breakdown</h3>
+            <div class="table-responsive">
+              <table id="category-table" class="table table-striped table-condensed count-table" style="margin-bottom: 0;">
+                <thead>
+                  <tr>
+                    <th class="sortable" data-table="category" data-key="name">Category <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="category" data-key="count">Count <span class="sort-indicator"></span></th>
+                    <th class="sortable" data-table="category" data-key="pct">% <span class="sort-indicator"></span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var DEFAULT_DATA_URL = "data/audit-action-items-2026-07-01.csv";
+      var IN_PROGRESS_STATUSES = ["open", "in_progress", "awaiting_irs_response"];
+
+      var allRows = [];
+      var sortState = {
+        status: { key: "count", dir: "desc" },
+        team: { key: "count", dir: "desc" },
+        category: { key: "count", dir: "desc" }
+      };
+
+      var fileInput = document.getElementById("data-file");
+      var textArea = document.getElementById("data-text");
+      var loadButton = document.getElementById("load-button");
+      var errorBox = document.getElementById("error-box");
+      var loadingOverlay = document.getElementById("loading-overlay");
+      var dashboardContent = document.getElementById("dashboard-content");
+      var filterStatus = document.getElementById("filter-status");
+      var filterTeam = document.getElementById("filter-team");
+      var filterCategory = document.getElementById("filter-category");
+      var clearFiltersButton = document.getElementById("clear-filters");
+      var filteredCountLabel = document.getElementById("filtered-count-label");
+      var summaryCards = document.getElementById("summary-cards");
+
+      loadButton.addEventListener("click", function() {
+        var pasted = textArea.value.trim();
+        if (pasted.length > 0) {
+          loadFromText(pasted);
+          return;
+        }
+        if (fileInput.files && fileInput.files.length > 0) {
+          readFile(fileInput.files[0]);
+          return;
+        }
+        showError("Upload a CSV file, paste CSV content, or load the default dataset on page open.");
+      });
+
+      fileInput.addEventListener("change", function() {
+        if (fileInput.files && fileInput.files.length > 0) {
+          readFile(fileInput.files[0]);
+        }
+      });
+
+      clearFiltersButton.addEventListener("click", function() {
+        filterStatus.selectedIndex = -1;
+        filterTeam.selectedIndex = -1;
+        filterCategory.selectedIndex = -1;
+        renderDashboard();
+      });
+
+      [filterStatus, filterTeam, filterCategory].forEach(function(select) {
+        select.addEventListener("change", renderDashboard);
+      });
+
+      document.querySelectorAll(".count-table th.sortable").forEach(function(th) {
+        th.addEventListener("click", function() {
+          var table = th.getAttribute("data-table");
+          var key = th.getAttribute("data-key");
+          var current = sortState[table];
+          if (current.key === key) {
+            current.dir = current.dir === "asc" ? "desc" : "asc";
+          } else {
+            current.key = key;
+            current.dir = key === "name" ? "asc" : "desc";
+          }
+          renderDashboard();
+        });
+      });
+
+      loadDefaultDataset();
+
+      function loadDefaultDataset() {
+        showLoading(true);
+        fetch(DEFAULT_DATA_URL)
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error("Default dataset not found. Upload the CSV file instead.");
+            }
+            return response.text();
+          })
+          .then(function(text) {
+            loadFromText(text);
+          })
+          .catch(function(error) {
+            showLoading(false);
+            showError(error && error.message ? error.message : "Unable to load default dataset.");
+          });
+      }
+
+      function readFile(file) {
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          loadFromText(String(event.target.result || ""));
+        };
+        reader.onerror = function() {
+          showError("Unable to read the uploaded file.");
+        };
+        reader.readAsText(file);
+      }
+
+      function loadFromText(rawText) {
+        try {
+          hideError();
+          showLoading(true);
+          allRows = parseCsvRows(rawText);
+          if (!allRows.length) {
+            throw new Error("No rows were found in the dataset.");
+          }
+          populateFilters();
+          renderDashboard();
+          dashboardContent.style.display = "block";
+          showLoading(false);
+        } catch (error) {
+          showLoading(false);
+          showError(error && error.message ? error.message : "Failed to parse dataset.");
+        }
+      }
+
+      function populateFilters() {
+        fillSelect(filterStatus, uniqueValues(allRows, "Status"), formatStatusLabel);
+        fillSelect(filterTeam, uniqueValues(allRows, "Team"), formatTeamLabel);
+        fillSelect(filterCategory, uniqueValues(allRows, "Category"), formatCategoryLabel);
+      }
+
+      function fillSelect(select, values, labelFn) {
+        select.innerHTML = "";
+        values.forEach(function(value) {
+          var option = document.createElement("option");
+          option.value = value;
+          option.textContent = labelFn(value);
+          select.appendChild(option);
+        });
+      }
+
+      function uniqueValues(rows, field) {
+        var seen = {};
+        rows.forEach(function(row) {
+          seen[normalizeField(row[field])] = true;
+        });
+        return Object.keys(seen).sort(function(a, b) {
+          return a.localeCompare(b);
+        });
+      }
+
+      function getSelectedValues(select) {
+        return Array.prototype.slice.call(select.selectedOptions).map(function(option) {
+          return option.value;
+        });
+      }
+
+      function getFilteredRows() {
+        var statusFilter = getSelectedValues(filterStatus);
+        var teamFilter = getSelectedValues(filterTeam);
+        var categoryFilter = getSelectedValues(filterCategory);
+
+        return allRows.filter(function(row) {
+          var status = normalizeField(row.Status);
+          var team = normalizeField(row.Team);
+          var category = normalizeField(row.Category);
+
+          if (statusFilter.length && statusFilter.indexOf(status) === -1) {
+            return false;
+          }
+          if (teamFilter.length && teamFilter.indexOf(team) === -1) {
+            return false;
+          }
+          if (categoryFilter.length && categoryFilter.indexOf(category) === -1) {
+            return false;
+          }
+          return true;
+        });
+      }
+
+      function renderDashboard() {
+        var filteredRows = getFilteredRows();
+        var total = filteredRows.length;
+        var statusCounts = countByField(filteredRows, "Status");
+        var teamCounts = countByField(filteredRows, "Team");
+        var categoryCounts = countByField(filteredRows, "Category");
+
+        renderSummaryCards(filteredRows, statusCounts, total);
+        renderCountTable("status-table", statusCounts, total, sortState.status, formatStatusLabel);
+        renderCountTable("team-table", teamCounts, total, sortState.team, formatTeamLabel);
+        renderCountTable("category-table", categoryCounts, total, sortState.category, formatCategoryLabel);
+        updateSortIndicators();
+
+        filteredCountLabel.textContent = "Showing " + total.toLocaleString() + " of " + allRows.length.toLocaleString() + " action items";
+      }
+
+      function renderSummaryCards(rows, statusCounts, total) {
+        summaryCards.innerHTML = "";
+
+        var inProgressTotal = IN_PROGRESS_STATUSES.reduce(function(sum, status) {
+          return sum + (statusCounts[status] || 0);
+        }, 0);
+        var completed = statusCounts.completed || 0;
+
+        var cards = [
+          { label: "Total Items", value: total, detail: "After current filters", className: "" },
+          { label: "In Progress", value: inProgressTotal, detail: "Open + In Progress + Awaiting IRS", className: "status-in_progress" },
+          { label: "Open", value: statusCounts.open || 0, detail: "Status: open", className: "status-open" },
+          { label: "In Progress Status", value: statusCounts.in_progress || 0, detail: "Status: in_progress", className: "status-in_progress" },
+          { label: "Awaiting IRS", value: statusCounts.awaiting_irs_response || 0, detail: "Status: awaiting_irs_response", className: "status-awaiting_irs_response" },
+          { label: "Completed", value: completed, detail: "Status: completed", className: "status-completed" }
+        ];
+
+        cards.forEach(function(card) {
+          var col = document.createElement("div");
+          col.className = "col-sm-4 col-md-2";
+          col.innerHTML =
+            '<div class="stat-card ' + card.className + '">' +
+              '<div class="stat-label">' + escapeHtml(card.label) + '</div>' +
+              '<div class="stat-value">' + card.value.toLocaleString() + '</div>' +
+              '<div class="stat-detail">' + escapeHtml(card.detail) + '</div>' +
+            '</div>';
+          summaryCards.appendChild(col);
+        });
+      }
+
+      function countByField(rows, field) {
+        var counts = {};
+        rows.forEach(function(row) {
+          var key = normalizeField(row[field]);
+          counts[key] = (counts[key] || 0) + 1;
+        });
+        return counts;
+      }
+
+      function renderCountTable(tableId, counts, total, sort, labelFn) {
+        var tbody = document.querySelector("#" + tableId + " tbody");
+        var entries = Object.keys(counts).map(function(key) {
+          return {
+            name: key,
+            count: counts[key],
+            pct: total ? (counts[key] / total) * 100 : 0
+          };
+        });
+
+        entries.sort(function(a, b) {
+          var left = a[sort.key];
+          var right = b[sort.key];
+          if (sort.key === "name") {
+            left = String(left).toLowerCase();
+            right = String(right).toLowerCase();
+          }
+          if (left < right) {
+            return sort.dir === "asc" ? -1 : 1;
+          }
+          if (left > right) {
+            return sort.dir === "asc" ? 1 : -1;
+          }
+          return 0;
+        });
+
+        var maxCount = entries.reduce(function(max, entry) {
+          return Math.max(max, entry.count);
+        }, 0) || 1;
+
+        tbody.innerHTML = "";
+        if (!entries.length) {
+          tbody.innerHTML = "<tr><td colspan='3'>No matching items.</td></tr>";
+          return;
+        }
+
+        entries.forEach(function(entry) {
+          var tr = document.createElement("tr");
+          var barWidth = Math.max(4, Math.round((entry.count / maxCount) * 100));
+          tr.innerHTML =
+            "<td>" + escapeHtml(labelFn(entry.name)) + "</td>" +
+            "<td class='bar-cell'>" +
+              entry.count.toLocaleString() +
+              "<div class='count-bar'><div class='count-bar-fill' style='width:" + barWidth + "%'></div></div>" +
+            "</td>" +
+            "<td><span class='badge badge-pct'>" + entry.pct.toFixed(1) + "%</span></td>";
+          tbody.appendChild(tr);
+        });
+      }
+
+      function updateSortIndicators() {
+        document.querySelectorAll(".count-table th.sortable").forEach(function(th) {
+          var table = th.getAttribute("data-table");
+          var key = th.getAttribute("data-key");
+          var indicator = th.querySelector(".sort-indicator");
+          var state = sortState[table];
+          indicator.className = "sort-indicator";
+          if (state.key === key) {
+            indicator.className += " active";
+            indicator.textContent = state.dir === "asc" ? "▲" : "▼";
+          } else {
+            indicator.textContent = "↕";
+          }
+        });
+      }
+
+      function normalizeField(value) {
+        var text = String(value === null || value === undefined ? "" : value).trim();
+        return text === "" ? "(empty)" : text;
+      }
+
+      function formatStatusLabel(value) {
+        if (value === "(empty)") {
+          return "(empty)";
+        }
+        return value.replace(/_/g, " ");
+      }
+
+      function formatTeamLabel(value) {
+        return value === "(empty)" ? "(unassigned)" : value;
+      }
+
+      function formatCategoryLabel(value) {
+        return value === "(empty)" ? "(uncategorized)" : value;
+      }
+
+      function parseCsvRows(rawText) {
+        var rows = parseCsvMatrix(rawText);
+        if (rows.length < 2) {
+          throw new Error("CSV needs at least a header row and one data row.");
+        }
+        var headers = rows[0].map(function(cell, index) {
+          var trimmed = String(cell || "").trim();
+          return trimmed || "column_" + (index + 1);
+        });
+        return rows.slice(1).filter(function(line) {
+          return line.some(function(cell) {
+            return String(cell || "").trim().length > 0;
+          });
+        }).map(function(line) {
+          var item = {};
+          headers.forEach(function(header, index) {
+            item[header] = line[index] !== undefined ? line[index] : "";
+          });
+          return item;
+        });
+      }
+
+      function parseCsvMatrix(rawText) {
+        var text = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        var rows = [];
+        var row = [];
+        var value = "";
+        var inQuotes = false;
+
+        for (var i = 0; i < text.length; i++) {
+          var char = text[i];
+          var next = text[i + 1];
+
+          if (char === "\"" && inQuotes && next === "\"") {
+            value += "\"";
+            i++;
+            continue;
+          }
+          if (char === "\"") {
+            inQuotes = !inQuotes;
+            continue;
+          }
+          if (char === "," && !inQuotes) {
+            row.push(value);
+            value = "";
+            continue;
+          }
+          if (char === "\n" && !inQuotes) {
+            row.push(value);
+            rows.push(row);
+            row = [];
+            value = "";
+            continue;
+          }
+          value += char;
+        }
+
+        row.push(value);
+        rows.push(row);
+        return rows;
+      }
+
+      function showError(message) {
+        errorBox.textContent = message;
+        errorBox.style.display = "block";
+      }
+
+      function hideError() {
+        errorBox.style.display = "none";
+      }
+
+      function showLoading(isLoading) {
+        loadingOverlay.style.display = isLoading ? "block" : "none";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+    })();
+  </script>
+</body>
+</html>
