@@ -1,0 +1,91 @@
+name: Tracking Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: "Path to HubSpot CSV file in the repository"
+        required: false
+        default: "data/hubspot-irs-issue-notices.csv"
+      stale_days:
+        description: "Stale threshold for open tickets"
+        required: false
+        default: "7"
+      previous_snapshot_path:
+        description: "Optional path to prior tickets_snapshot.json for movement tracking"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 13 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  generate-tracking-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "csv_path=${{ inputs.csv_path }}" >> "$GITHUB_OUTPUT"
+            echo "stale_days=${{ inputs.stale_days }}" >> "$GITHUB_OUTPUT"
+            echo "previous_snapshot_path=${{ inputs.previous_snapshot_path }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "csv_path=data/hubspot-irs-issue-notices.csv" >> "$GITHUB_OUTPUT"
+            echo "stale_days=7" >> "$GITHUB_OUTPUT"
+            echo "previous_snapshot_path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate CSV path exists
+        run: |
+          if [ ! -f "${{ steps.inputs.outputs.csv_path }}" ]; then
+            echo "CSV file not found: ${{ steps.inputs.outputs.csv_path }}"
+            exit 1
+          fi
+
+      - name: Generate tracking report
+        run: |
+          EXTRA_ARGS=()
+          if [ -n "${{ steps.inputs.outputs.previous_snapshot_path }}" ]; then
+            if [ ! -f "${{ steps.inputs.outputs.previous_snapshot_path }}" ]; then
+              echo "Previous snapshot file not found: ${{ steps.inputs.outputs.previous_snapshot_path }}"
+              exit 1
+            fi
+            EXTRA_ARGS+=(--previous-snapshot "${{ steps.inputs.outputs.previous_snapshot_path }}")
+          fi
+          python3 tracking-report/generate_tracking_report.py \
+            --input "${{ steps.inputs.outputs.csv_path }}" \
+            --output-dir tracking-report/output \
+            --stale-days "${{ steps.inputs.outputs.stale_days }}" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Build landing page bundle
+        run: |
+          mkdir -p tracking-report/site-output/data
+          cp tracking-report/landing-page/index.html tracking-report/site-output/index.html
+          cp tracking-report/landing-page/app.js tracking-report/site-output/app.js
+          cp tracking-report/landing-page/styles.css tracking-report/site-output/styles.css
+          cp tracking-report/output/landing_page_data.json tracking-report/site-output/data/landing_page_data.json
+          cp tracking-report/output/tracking_report.md tracking-report/site-output/data/tracking_report.md
+
+      - name: Upload report artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracking-report-data
+          path: tracking-report/output
+
+      - name: Upload landing page artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracking-report-landing-page
+          path: tracking-report/site-output
